@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"api-enjor/pkg/models"
 	"api-enjor/pkg/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -23,7 +24,5 @@ func NewUserController(db *gorm.DB) UserController {
 
 func (uc *DBgormUser) GetUser(c *fiber.Ctx) error {
 	user := utils.ModuleUser(c)
-	return c.Status(200).JSON(fiber.Map{
-		"c.Locals": user,
-	})
+	return c.JSON(models.NewBaseResponse(user, fiber.StatusOK))
 }

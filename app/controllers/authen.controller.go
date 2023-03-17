@@ -7,18 +7,23 @@ import (
 	"api-enjor/pkg/utils"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"net/http"
+	"os"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 )
 
 type AuthController struct {
 	DB *gorm.DB
+}
+
+type PayloadsClaims struct {
+	jwt.StandardClaims
+	Sub *models.ModuleProfile `json:"sub"`
 }
 
 func NewAuthController(DB *gorm.DB) AuthController {
@@ -64,17 +69,17 @@ func (ac *AuthController) UserOauthController(c *fiber.Ctx) error {
 }
 
 func (ac *AuthController) CallbackUserController(c *fiber.Ctx) error {
-	code := c.Query("code")
-	if code == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "code is notfound",
-		})
+	request := new(models.OauthRequest)
+	if err := c.BodyParser(request); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.NewBaseErrorResponse(err.Error(), fiber.StatusBadRequest))
 	}
 
 	config := internal.Oauth()
-	tok, err := config.Exchange(oauth2.NoContext, code)
+	tok, err := config.Exchange(c.Context(), request.Code)
 	if err != nil {
-		log.Fatal(err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
 	}
 	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + tok.AccessToken)
 	if err != nil {
@@ -97,14 +102,13 @@ func (ac *AuthController) CallbackUserController(c *fiber.Ctx) error {
 		Is_oauth:     true,
 	}
 
-	access_token, err := utils.GenerateTokenJWT(model_user)
+	items, err := utils.GenerateTokenJWT(model_user, true)
+	model_user.Access_token = items
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(models.NewBaseErrorResponse(err.Error(), fiber.StatusBadRequest))
 	}
 
-	return c.JSON(models.NewBaseResponse(&models.AuthToken{
-		Access_token: access_token,
-	}, fiber.StatusOK))
+	return c.JSON(models.NewBaseResponse(model_user, fiber.StatusOK))
 }
 
 func (ac *AuthController) LoginUserControlles(c *fiber.Ctx) error {
@@ -141,12 +145,48 @@ func (ac *AuthController) LoginUserControlles(c *fiber.Ctx) error {
 		Is_oauth:     false,
 	}
 
-	access_token, err := utils.GenerateTokenJWT(model_user)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(models.NewBaseErrorResponse(err.Error(), fiber.StatusBadRequest))
+	access_token, _ := utils.GenerateTokenJWT(model_user, true)
+	refresh_token, _ := utils.GenerateTokenJWT(model_user, false)
+
+	decode, _ := utils.Decode(os.Getenv("JWT_SECRET"))
+	token, _err := jwt.ParseWithClaims(access_token, &utils.PayloadsClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(decode), nil
+	})
+
+	if _err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(models.NewBaseErrorResponse(_err.Error(), fiber.StatusBadRequest))
 	}
 
-	return c.JSON(models.NewBaseResponse(&models.AuthToken{
+	claims := token.Claims.(*utils.PayloadsClaims)
+
+	return c.JSON(models.NewBaseResponse(utils.GenerateJWTOption{
+		Access_token:  access_token,
+		Refresh_token: refresh_token,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: claims.ExpiresAt,
+			IssuedAt:  claims.IssuedAt,
+		},
+	}, fiber.StatusOK))
+}
+
+func (ac *AuthController) RefreshTokenControlles(c *fiber.Ctx) error {
+	user := utils.ModuleUser(c)
+
+	decode, _ := utils.Decode(os.Getenv("JWT_SECRET"))
+
+	access_token, _ := utils.GenerateTokenJWT(user, true)
+
+	token, _ := jwt.ParseWithClaims(access_token, &utils.PayloadsClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(decode), nil
+	})
+
+	claims := token.Claims.(*utils.PayloadsClaims)
+
+	return c.JSON(models.NewBaseResponse(utils.GenerateJWTOption{
 		Access_token: access_token,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: claims.ExpiresAt,
+			IssuedAt:  claims.IssuedAt,
+		},
 	}, fiber.StatusOK))
 }

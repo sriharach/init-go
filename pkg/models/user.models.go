@@ -9,6 +9,7 @@ type SignInInput struct {
 
 type AuthToken struct {
 	Access_token string `json:"access_token"`
+	// Refresh_token string `json:"refresh_token"`
 }
 
 type ModuleProfile struct {
@@ -19,6 +20,7 @@ type ModuleProfile struct {
 	Activate     uint8     `json:"activate"`
 	Picture      string    `json:"picture"`
 	Is_oauth     bool      `json:"is_oauth"`
+	AuthToken
 }
 
 type ModuleProfileOauth struct {

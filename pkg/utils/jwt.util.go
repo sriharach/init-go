@@ -15,29 +15,37 @@ type PayloadsClaims struct {
 	Sub *models.ModuleProfile `json:"sub"`
 }
 
-func GenerateTokenJWT(payload *models.ModuleProfile) (string, error) {
+type GenerateJWTOption struct {
+	jwt.StandardClaims
+	Access_token  string `json:"access_token"`
+	Refresh_token string `json:"refresh_token"`
+}
+
+func GenerateTokenJWT(payload *models.ModuleProfile, isExpired bool) (string, error) {
+	var expired30m int64
 	now := time.Now().UTC()
+
+	if isExpired {
+		expired30m = now.Add(30 * time.Minute).Unix()
+	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, PayloadsClaims{
 		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: now.Add(30 * time.Minute).Unix(),
+			ExpiresAt: expired30m,
 			IssuedAt:  now.Unix(),
 		},
 		Sub: payload,
 	})
 
-	// claims := token.Claims.(jwt.MapClaims)
-	// claims["exp"] = now.Add(60 * time.Second).Unix()
-	// claims["iat"] = now.Unix()
-	// claims["users"] = payload
-
 	decode, _ := Decode(os.Getenv("JWT_SECRET"))
 
 	mySigningKey := []byte((decode))
+
 	tokenString, err := token.SignedString(mySigningKey)
 	if err != nil {
 		return "", err
 	}
+
 	return tokenString, nil
 
 }

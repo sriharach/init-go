@@ -11,7 +11,7 @@ import (
 )
 
 func DeserializeUser(c *fiber.Ctx) error {
-	str, is_jwt := PassportJwt(c)
+	str, is_jwt := PassportJwtValidate(c)
 	if is_jwt {
 		return c.Status(fiber.StatusUnauthorized).JSON(models.NewBaseErrorResponse(fiber.Map{
 			"message": str,
@@ -21,21 +21,21 @@ func DeserializeUser(c *fiber.Ctx) error {
 	return c.Next()
 }
 
-func PassportJwt(c *fiber.Ctx) (string, bool) {
+func PassportJwtValidate(c *fiber.Ctx) (string, bool) {
 	decode, _ := utils.Decode(os.Getenv("JWT_SECRET"))
 
 	bearer := c.Get("Authorization")
 	if bearer == "" {
 		c.Locals("user", nil)
-		return "unauthorized", true
+		return "Unauthorized", true
 	}
 
 	trimToken := strings.TrimPrefix(bearer, "Bearer ")
 
-	if _, err := utils.ValidateToken(trimToken); err != nil {
-		c.Locals("user", nil)
-		return "validate", true
-	}
+	// if _, err := utils.ValidateToken(trimToken); err != nil {
+	// 	c.Locals("user", nil)
+	// 	return "validate", true
+	// }
 
 	token, err := jwt.ParseWithClaims(trimToken, &utils.PayloadsClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(decode), nil
@@ -43,7 +43,7 @@ func PassportJwt(c *fiber.Ctx) (string, bool) {
 
 	if err != nil {
 		c.Locals("user", nil)
-		return "unauthorized", true
+		return err.Error(), true
 	}
 
 	claims := token.Claims.(*utils.PayloadsClaims)

@@ -22,6 +22,6 @@ func NewRouteUser(uc controllers.UserController) UserRoute {
 }
 
 func (uc *UserRouteOption) UserRoute(a *fiber.App) {
-	router := a.Group("/api/users")
-	router.Get("/", middleware.DeserializeUser, uc.userController.GetUser)
+	router := a.Group("/api/user", middleware.DeserializeUser)
+	router.Get("/", uc.userController.GetUser)
 }
